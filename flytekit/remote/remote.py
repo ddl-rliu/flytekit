@@ -846,6 +846,7 @@ class FlyteRemote(object):
             if rsp.status_code not in (requests.codes["OK"], requests.codes["created"]):
                 raise FlyteValueException(
                     rsp.status_code,
+                    rsp.text,
                     f"Request to send data {upload_location.signed_url} failed.",
                 )
 
