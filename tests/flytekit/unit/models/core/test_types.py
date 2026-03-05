@@ -15,11 +15,43 @@ def test_blob_type():
     )
     assert o.format == "csv"
     assert o.dimensionality == _types.BlobType.BlobDimensionality.SINGLE
+    assert o.file_extension == ""
 
     o2 = _types.BlobType.from_flyte_idl(o.to_flyte_idl())
     assert o == o2
     assert o2.format == "csv"
     assert o2.dimensionality == _types.BlobType.BlobDimensionality.SINGLE
+    assert o2.file_extension == ""
+
+
+def test_blob_type_file_extension():
+    o = _types.BlobType(
+        format="csv",
+        dimensionality=_types.BlobType.BlobDimensionality.SINGLE,
+        file_extension="csv",
+    )
+    assert o.format == "csv"
+    assert o.dimensionality == _types.BlobType.BlobDimensionality.SINGLE
+    assert o.file_extension == "csv"
+
+    o2 = _types.BlobType.from_flyte_idl(o.to_flyte_idl())
+    assert o2.format == "csv"
+    assert o2.dimensionality == _types.BlobType.BlobDimensionality.SINGLE
+    assert o2.file_extension == "csv"
+
+
+def test_blob_type_file_extension_default_empty():
+    o = _types.BlobType(
+        format="parquet",
+        dimensionality=_types.BlobType.BlobDimensionality.MULTIPART,
+    )
+    assert o.file_extension == ""
+
+    pb = o.to_flyte_idl()
+    assert pb.file_extension == ""
+
+    o2 = _types.BlobType.from_flyte_idl(pb)
+    assert o2.file_extension == ""
 
 
 def test_enum_type():

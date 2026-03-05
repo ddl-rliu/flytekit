@@ -807,3 +807,71 @@ def test_flyte_file_is_pickleable():
     pickled_input = pickle.dumps(downstream_input)
     unpickled_input = pickle.loads(pickled_input)
     assert downstream_input == unpickled_input
+
+
+def test_flyte_file_file_extension_default():
+    ff = FlyteFile(path="/tmp/some_file")
+    assert ff.file_extension == ""
+
+
+def test_flyte_file_file_extension_set():
+    ff = FlyteFile(path="/tmp/data", file_extension="csv")
+    assert ff.file_extension == "csv"
+
+
+def test_flyte_file_extension_to_literal(local_dummy_file):
+    ctx = FlyteContextManager.current_context()
+    tf = FlyteFilePathTransformer()
+
+    ff_no_ext = FlyteFile(path=local_dummy_file)
+    lt = tf.get_literal_type(FlyteFile)
+    lv = tf.to_literal(ctx, ff_no_ext, FlyteFile, lt)
+    assert lv.scalar.blob.metadata.type.file_extension == ""
+
+    ff_with_ext = FlyteFile(path=local_dummy_file, file_extension="csv")
+    lv = tf.to_literal(ctx, ff_with_ext, FlyteFile, lt)
+    assert lv.scalar.blob.metadata.type.file_extension == "csv"
+
+
+def test_flyte_file_extension_roundtrip_to_python_value():
+    ctx = FlyteContextManager.current_context()
+    tf = FlyteFilePathTransformer()
+
+    upstream_output = Literal(
+        scalar=Scalar(
+            blob=Blob(
+                uri="s3://bucket/data",
+                metadata=BlobMetadata(
+                    type=BlobType(
+                        dimensionality=BlobType.BlobDimensionality.SINGLE,
+                        format="",
+                        file_extension="csv",
+                    )
+                )
+            )
+        )
+    )
+    pv = tf.to_python_value(ctx, upstream_output, FlyteFile)
+    assert pv.file_extension == "csv"
+
+
+def test_flyte_file_extension_empty_by_default_with_format():
+    ctx = FlyteContextManager.current_context()
+    tf = FlyteFilePathTransformer()
+
+    upstream_output = Literal(
+        scalar=Scalar(
+            blob=Blob(
+                uri="s3://bucket/data",
+                metadata=BlobMetadata(
+                    type=BlobType(
+                        dimensionality=BlobType.BlobDimensionality.SINGLE,
+                        format="csv",
+                    )
+                )
+            )
+        )
+    )
+    pv = tf.to_python_value(ctx, upstream_output, FlyteFile["csv"])
+    assert pv.extension() == "csv"
+    assert pv.file_extension == ""
