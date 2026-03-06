@@ -875,3 +875,49 @@ def test_flyte_file_extension_empty_by_default_with_format():
     pv = tf.to_python_value(ctx, upstream_output, FlyteFile["csv"])
     assert pv.extension() == "csv"
     assert pv.file_extension == ""
+
+
+def test_flyte_file_enable_legacy_filename_default():
+    ff = FlyteFile(path="/tmp/data")
+    assert ff.enable_legacy_filename is False
+
+
+def test_flyte_file_enable_legacy_filename_set():
+    ff = FlyteFile(path="/tmp/data", file_extension="csv", enable_legacy_filename=True)
+    assert ff.enable_legacy_filename is True
+    assert ff.file_extension == "csv"
+
+
+def test_flyte_file_enable_legacy_filename_to_literal(local_dummy_file):
+    ctx = FlyteContextManager.current_context()
+    tf = FlyteFilePathTransformer()
+    lt = tf.get_literal_type(FlyteFile)
+
+    ff = FlyteFile(path=local_dummy_file, file_extension="csv", enable_legacy_filename=True)
+    lv = tf.to_literal(ctx, ff, FlyteFile, lt)
+    assert lv.scalar.blob.metadata.type.file_extension == "csv"
+    assert lv.scalar.blob.metadata.type.enable_legacy_filename is True
+
+
+def test_flyte_file_enable_legacy_filename_roundtrip():
+    ctx = FlyteContextManager.current_context()
+    tf = FlyteFilePathTransformer()
+
+    upstream_output = Literal(
+        scalar=Scalar(
+            blob=Blob(
+                uri="s3://bucket/data",
+                metadata=BlobMetadata(
+                    type=BlobType(
+                        dimensionality=BlobType.BlobDimensionality.SINGLE,
+                        format="",
+                        file_extension="csv",
+                        enable_legacy_filename=True,
+                    )
+                )
+            )
+        )
+    )
+    pv = tf.to_python_value(ctx, upstream_output, FlyteFile)
+    assert pv.file_extension == "csv"
+    assert pv.enable_legacy_filename is True

@@ -321,6 +321,7 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         remote_path: typing.Optional[typing.Union[os.PathLike, str, bool]] = None,
         metadata: typing.Optional[dict[str, str]] = None,
         file_extension: str = "",
+        enable_legacy_filename: bool = False,
     ):
         """
         FlyteFile's init method.
@@ -333,12 +334,15 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
             the path should point to the location and remote_path should be set to False.
         :param file_extension: Optional file extension (without leading dot) that flytecopilot
             will use when writing the blob to local disk, e.g. "csv". Empty by default.
+        :param enable_legacy_filename: When True and file_extension is set, copilot writes
+            the blob to both the extended path and the base path for backward compatibility.
         """
         # Make this field public, so that the dataclass transformer can set a value for it
         # https://github.com/flyteorg/flytekit/blob/bcc8541bd6227b532f8462563fe8aac902242b21/flytekit/core/type_engine.py#L298
         self.path = path
         self.metadata = metadata
         self._file_extension = file_extension
+        self._enable_legacy_filename = enable_legacy_filename
         self._downloader = downloader
         self._downloaded = False
         self._remote_path = remote_path
@@ -424,6 +428,14 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         """
         return self._file_extension
 
+    @property
+    def enable_legacy_filename(self) -> bool:
+        """
+        When True and file_extension is set, copilot writes the blob to both
+        the extended path and the base path for backward compatibility.
+        """
+        return self._enable_legacy_filename
+
     def download(self) -> str:
         return self.__fspath__()
 
@@ -489,8 +501,13 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
             return ""
         return cast(FlyteFile, t).extension()
 
-    def _blob_type(self, format: str, file_extension: str = "") -> BlobType:
-        return BlobType(format=format, dimensionality=BlobType.BlobDimensionality.SINGLE, file_extension=file_extension)
+    def _blob_type(self, format: str, file_extension: str = "", enable_legacy_filename: bool = False) -> BlobType:
+        return BlobType(
+            format=format,
+            dimensionality=BlobType.BlobDimensionality.SINGLE,
+            file_extension=file_extension,
+            enable_legacy_filename=enable_legacy_filename,
+        )
 
     def assert_type(
         self, t: typing.Union[typing.Type[FlyteFile], os.PathLike], v: typing.Union[FlyteFile, os.PathLike, str]
@@ -578,7 +595,12 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
 
         # information used by all cases
         file_ext = python_val.file_extension if isinstance(python_val, FlyteFile) else ""
-        meta = BlobMetadata(type=self._blob_type(format=FlyteFilePathTransformer.get_format(python_type), file_extension=file_ext))
+        legacy_fn = python_val.enable_legacy_filename if isinstance(python_val, FlyteFile) else False
+        meta = BlobMetadata(type=self._blob_type(
+            format=FlyteFilePathTransformer.get_format(python_type),
+            file_extension=file_ext,
+            enable_legacy_filename=legacy_fn,
+        ))
 
         if isinstance(python_val, FlyteFile):
             # Cast the source path to str type to avoid error raised when the source path is used as the blob uri,
@@ -777,11 +799,12 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
             )
 
         file_ext = lv.scalar.blob.metadata.type.file_extension
+        legacy_fn = lv.scalar.blob.metadata.type.enable_legacy_filename
 
         # In this condition, we still return a FlyteFile instance, but it's a simple one that has no downloading tricks
         # Using is instead of issubclass because FlyteFile does actually subclass it
         if expected_python_type is os.PathLike:
-            return FlyteFile(path=uri, metadata=metadata, file_extension=file_ext)
+            return FlyteFile(path=uri, metadata=metadata, file_extension=file_ext, enable_legacy_filename=legacy_fn)
 
         # Correctly handle `Annotated[FlyteFile, ...]` by extracting the origin type
         expected_python_type = get_underlying_type(expected_python_type)
@@ -793,7 +816,7 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         # This is a local file path, like /usr/local/my_file, don't mess with it. Certainly, downloading it doesn't
         # make any sense.
         if not ctx.file_access.is_remote(uri):
-            return expected_python_type(path=uri, metadata=metadata, file_extension=file_ext)  # type: ignore
+            return expected_python_type(path=uri, metadata=metadata, file_extension=file_ext, enable_legacy_filename=legacy_fn)  # type: ignore
 
         # For the remote case, return an FlyteFile object that can download
         local_path = ctx.file_access.get_random_local_path(uri)
@@ -801,7 +824,7 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         _downloader = _FlyteFileDownloader(remote_path=uri, local_path=local_path, is_multipart=False)
 
         expected_format = FlyteFilePathTransformer.get_format(expected_python_type)
-        ff = FlyteFile.__class_getitem__(expected_format)(path=local_path, downloader=_downloader, metadata=metadata, file_extension=file_ext)
+        ff = FlyteFile.__class_getitem__(expected_format)(path=local_path, downloader=_downloader, metadata=metadata, file_extension=file_ext, enable_legacy_filename=legacy_fn)
         ff._remote_source = uri
         return ff
 

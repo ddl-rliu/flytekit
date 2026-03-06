@@ -54,6 +54,36 @@ def test_blob_type_file_extension_default_empty():
     assert o2.file_extension == ""
 
 
+def test_blob_type_enable_legacy_filename():
+    o = _types.BlobType(
+        format="csv",
+        dimensionality=_types.BlobType.BlobDimensionality.SINGLE,
+        file_extension="csv",
+        enable_legacy_filename=True,
+    )
+    assert o.format == "csv"
+    assert o.file_extension == "csv"
+    assert o.enable_legacy_filename is True
+
+    o2 = _types.BlobType.from_flyte_idl(o.to_flyte_idl())
+    assert o2.file_extension == "csv"
+    assert o2.enable_legacy_filename is True
+
+
+def test_blob_type_enable_legacy_filename_default_false():
+    o = _types.BlobType(
+        format="csv",
+        dimensionality=_types.BlobType.BlobDimensionality.SINGLE,
+    )
+    assert o.enable_legacy_filename is False
+
+    pb = o.to_flyte_idl()
+    assert pb.enable_legacy_filename is False
+
+    o2 = _types.BlobType.from_flyte_idl(pb)
+    assert o2.enable_legacy_filename is False
+
+
 def test_enum_type():
     o = _types.EnumType(values=["x", "y"])
     assert o.values == ["x", "y"]
