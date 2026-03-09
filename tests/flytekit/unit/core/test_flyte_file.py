@@ -921,3 +921,41 @@ def test_flyte_file_enable_legacy_filename_roundtrip():
     pv = tf.to_python_value(ctx, upstream_output, FlyteFile)
     assert pv.file_extension == "csv"
     assert pv.enable_legacy_filename is True
+
+
+def test_flyte_file_class_level_file_ext_default():
+    assert FlyteFile.file_ext() == ""
+    assert FlyteFile.legacy_filename() is False
+
+
+def test_flyte_file_subscript_class_level_file_ext():
+    cls = FlyteFile["csv"]
+    assert cls.extension() == "csv"
+    assert cls.file_ext() == ""
+    assert cls.legacy_filename() is False
+
+
+def test_flyte_file_get_literal_type_no_extension():
+    tf = FlyteFilePathTransformer()
+    lt = tf.get_literal_type(FlyteFile["csv"])
+    assert lt.blob.format == "csv"
+    assert lt.blob.file_extension == ""
+    assert lt.blob.enable_legacy_filename is False
+
+
+def test_flyte_file_get_literal_type_plain():
+    tf = FlyteFilePathTransformer()
+    lt = tf.get_literal_type(FlyteFile)
+    assert lt.blob.format == ""
+    assert lt.blob.file_extension == ""
+    assert lt.blob.enable_legacy_filename is False
+
+
+def test_transformer_get_file_extension_and_legacy():
+    tf = FlyteFilePathTransformer()
+    assert tf.get_file_extension(FlyteFile) == ""
+    assert tf.get_file_extension(FlyteFile["csv"]) == ""
+    assert tf.get_file_extension(os.PathLike) == ""
+    assert tf.get_enable_legacy_filename(FlyteFile) is False
+    assert tf.get_enable_legacy_filename(FlyteFile["csv"]) is False
+    assert tf.get_enable_legacy_filename(os.PathLike) is False

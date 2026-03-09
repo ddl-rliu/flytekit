@@ -280,6 +280,16 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
 
         return cls(path=path)
 
+    @classmethod
+    def file_ext(cls) -> str:
+        """Class-level file extension for copilot download. Empty by default."""
+        return ""
+
+    @classmethod
+    def legacy_filename(cls) -> bool:
+        """Class-level legacy filename flag for copilot download. False by default."""
+        return False
+
     def __class_getitem__(cls, item: typing.Union[str, typing.Type]) -> typing.Type[FlyteFile]:
         from flytekit.types.file import FileExt
 
@@ -320,8 +330,8 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         downloader: typing.Callable = noop,
         remote_path: typing.Optional[typing.Union[os.PathLike, str, bool]] = None,
         metadata: typing.Optional[dict[str, str]] = None,
-        file_extension: str = "",
-        enable_legacy_filename: bool = False,
+        file_extension: typing.Optional[str] = None,
+        enable_legacy_filename: typing.Optional[bool] = None,
     ):
         """
         FlyteFile's init method.
@@ -333,16 +343,18 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
             Alternatively, if the user wants to specify a remote path for a file that's already in the blob store,
             the path should point to the location and remote_path should be set to False.
         :param file_extension: Optional file extension (without leading dot) that flytecopilot
-            will use when writing the blob to local disk, e.g. "csv". Empty by default.
+            will use when writing the blob to local disk, e.g. "csv". When None, falls back to
+            the class-level file_ext() method.
         :param enable_legacy_filename: When True and file_extension is set, copilot writes
             the blob to both the extended path and the base path for backward compatibility.
+            When None, falls back to the class-level legacy_filename() method.
         """
         # Make this field public, so that the dataclass transformer can set a value for it
         # https://github.com/flyteorg/flytekit/blob/bcc8541bd6227b532f8462563fe8aac902242b21/flytekit/core/type_engine.py#L298
         self.path = path
         self.metadata = metadata
-        self._file_extension = file_extension
-        self._enable_legacy_filename = enable_legacy_filename
+        self._file_extension = file_extension if file_extension is not None else type(self).file_ext()
+        self._enable_legacy_filename = enable_legacy_filename if enable_legacy_filename is not None else type(self).legacy_filename()
         self._downloader = downloader
         self._downloaded = False
         self._remote_path = remote_path
@@ -501,6 +513,18 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
             return ""
         return cast(FlyteFile, t).extension()
 
+    @staticmethod
+    def get_file_extension(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> str:
+        if t is os.PathLike:
+            return ""
+        return cast(FlyteFile, t).file_ext()
+
+    @staticmethod
+    def get_enable_legacy_filename(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> bool:
+        if t is os.PathLike:
+            return False
+        return cast(FlyteFile, t).legacy_filename()
+
     def _blob_type(self, format: str, file_extension: str = "", enable_legacy_filename: bool = False) -> BlobType:
         return BlobType(
             format=format,
@@ -520,7 +544,11 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         )
 
     def get_literal_type(self, t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> LiteralType:
-        return LiteralType(blob=self._blob_type(format=FlyteFilePathTransformer.get_format(t)))
+        return LiteralType(blob=self._blob_type(
+            format=FlyteFilePathTransformer.get_format(t),
+            file_extension=FlyteFilePathTransformer.get_file_extension(t),
+            enable_legacy_filename=FlyteFilePathTransformer.get_enable_legacy_filename(t),
+        ))
 
     def get_mime_type_from_extension(self, extension: str) -> typing.Union[str, typing.Sequence[str]]:
         extension_to_mime_type = {
@@ -593,9 +621,12 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         if not (python_type is os.PathLike or issubclass(python_type, FlyteFile)):
             raise ValueError(f"Incorrect type {python_type}, must be either a FlyteFile or os.PathLike")
 
-        # information used by all cases
-        file_ext = python_val.file_extension if isinstance(python_val, FlyteFile) else ""
-        legacy_fn = python_val.enable_legacy_filename if isinstance(python_val, FlyteFile) else False
+        if isinstance(python_val, FlyteFile):
+            file_ext = python_val.file_extension
+            legacy_fn = python_val.enable_legacy_filename
+        else:
+            file_ext = self.get_file_extension(python_type)
+            legacy_fn = self.get_enable_legacy_filename(python_type)
         meta = BlobMetadata(type=self._blob_type(
             format=FlyteFilePathTransformer.get_format(python_type),
             file_extension=file_ext,
