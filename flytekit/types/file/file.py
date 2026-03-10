@@ -484,6 +484,8 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         if t is os.PathLike:
             return ""
         file_download_config = get_file_download_config(t)
+        if file_download_config is None:
+            return ""
         return file_download_config.file_extension or ""
 
     @staticmethod
@@ -491,6 +493,8 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         if t is os.PathLike:
             return False
         file_download_config = get_file_download_config(t)
+        if file_download_config is None:
+            return False
         return file_download_config.enable_legacy_filename or False
 
     def _blob_type(self, format: str, file_extension: str = "", enable_legacy_filename: bool = False) -> BlobType:
