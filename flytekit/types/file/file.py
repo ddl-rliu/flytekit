@@ -24,6 +24,7 @@ from flytekit.core.type_engine import (
     AsyncTypeTransformer,
     TypeEngine,
     TypeTransformerFailedError,
+    get_file_download_config,
     get_underlying_type,
 )
 from flytekit.exceptions.user import FlyteAssertion
@@ -282,7 +283,6 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
 
     def __class_getitem__(cls, item: typing.Union[str, typing.Type]) -> typing.Type[FlyteFile]:
         from flytekit.types.file import FileExt
-        from flytekit.core.type_engine import get_file_download_config
 
         if item is None:
             return cls
@@ -292,8 +292,6 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         item_string = item_string.strip().lstrip("~").lstrip(".")
         if item == "":
             return cls
-
-        file_download_config = get_file_download_config(item)
 
         class _SpecificFormatClass(FlyteFile):
             # Get the type engine to see this as kind of a generic
@@ -315,13 +313,6 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
             def extension(cls) -> str:
                 return item_string
 
-            @classmethod
-            def file_extension(cls) -> str:
-                return file_download_config.file_extension or ""
-
-            @classmethod
-            def enable_legacy_filename(cls) -> bool:
-                return file_download_config.enable_legacy_filename or False
 
         return _SpecificFormatClass
 
@@ -492,13 +483,15 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
     def get_file_extension(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> str:
         if t is os.PathLike:
             return ""
-        return cast(FlyteFile, t).file_extension()
+        file_download_config = get_file_download_config(t)
+        return file_download_config.file_extension or ""
 
     @staticmethod
     def get_enable_legacy_filename(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> str:
         if t is os.PathLike:
             return False
-        return cast(FlyteFile, t).enable_legacy_filename()
+        file_download_config = get_file_download_config(t)
+        return file_download_config.enable_legacy_filename or False
 
     def _blob_type(self, format: str, file_extension: str = "", enable_legacy_filename: bool = False) -> BlobType:
         return BlobType(format=format, dimensionality=BlobType.BlobDimensionality.SINGLE, file_extension=file_extension, enable_legacy_filename=enable_legacy_filename)
