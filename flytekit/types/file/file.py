@@ -281,7 +281,8 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         return cls(path=path)
 
     def __class_getitem__(cls, item: typing.Union[str, typing.Type]) -> typing.Type[FlyteFile]:
-        from flytekit.types.file import FileExt, FileDownloadConfig
+        from flytekit.types.file import FileExt
+        from flytekit.core.type_engine import get_file_download_config
 
         if item is None:
             return cls
@@ -292,8 +293,7 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         if item == "":
             return cls
 
-        file_extension = FileDownloadConfig.check_and_convert_to_file_extension(item)
-        enable_legacy_filename = FileDownloadConfig.check_and_convert_to_enable_legacy_filename(item)
+        file_download_config = get_file_download_config(item)
 
         class _SpecificFormatClass(FlyteFile):
             # Get the type engine to see this as kind of a generic
@@ -317,11 +317,11 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
 
             @classmethod
             def file_extension(cls) -> str:
-                return file_extension or ""
+                return file_download_config.file_extension or ""
 
             @classmethod
             def enable_legacy_filename(cls) -> bool:
-                return enable_legacy_filename or False
+                return file_download_config.enable_legacy_filename or False
 
         return _SpecificFormatClass
 

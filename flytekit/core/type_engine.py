@@ -105,6 +105,40 @@ def get_batch_size(t: Type) -> Optional[int]:
     return None
 
 
+class FileDownloadConfig:
+    """
+    This is used to annotate a FlyteFile when we want to download the file with a specific extension. For example,
+
+    ```python
+    # ContainerTask
+    def t1(file: Annotated[FlyteFile, FileDownloadConfig(file_extension="csv")]):
+        ...
+    ```
+
+    In the above example, flytecopilot will download the file with the extension "csv".
+    """
+
+    def __init__(self, file_extension: str = "", enable_legacy_filename: bool = False):
+        self._file_extension = file_extension
+        self._enable_legacy_filename = enable_legacy_filename
+    
+    @property
+    def file_extension(self) -> str:
+        return self._file_extension
+    
+    @property
+    def enable_legacy_filename(self) -> bool:
+        return self._enable_legacy_filename
+
+
+def get_file_download_config(t: Type) -> Optional[FileDownloadConfig]:
+    if is_annotated(t):
+        for arg in get_args(t):
+            if isinstance(arg, FileDownloadConfig):
+                return arg
+    return None
+
+
 def modify_literal_uris(lit: Literal):
     """
     Modifies the literal object recursively to replace the URIs with the native paths in case they are of
