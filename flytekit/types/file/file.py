@@ -281,7 +281,7 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         return cls(path=path)
 
     def __class_getitem__(cls, item: typing.Union[str, typing.Type]) -> typing.Type[FlyteFile]:
-        from flytekit.types.file import FileExt
+        from flytekit.types.file import FileExt, FileDownloadConfig
 
         if item is None:
             return cls
@@ -291,6 +291,9 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
         item_string = item_string.strip().lstrip("~").lstrip(".")
         if item == "":
             return cls
+
+        file_extension = FileDownloadConfig.check_and_convert_to_file_extension(item)
+        enable_legacy_filename = FileDownloadConfig.check_and_convert_to_enable_legacy_filename(item)
 
         class _SpecificFormatClass(FlyteFile):
             # Get the type engine to see this as kind of a generic
@@ -311,6 +314,14 @@ class FlyteFile(SerializableType, os.PathLike, typing.Generic[T], DataClassJSONM
             @classmethod
             def extension(cls) -> str:
                 return item_string
+
+            @classmethod
+            def file_extension(cls) -> str:
+                return file_extension or ""
+
+            @classmethod
+            def enable_legacy_filename(cls) -> bool:
+                return enable_legacy_filename or False
 
         return _SpecificFormatClass
 
@@ -477,8 +488,20 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
             return ""
         return cast(FlyteFile, t).extension()
 
-    def _blob_type(self, format: str) -> BlobType:
-        return BlobType(format=format, dimensionality=BlobType.BlobDimensionality.SINGLE)
+    @staticmethod
+    def get_file_extension(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> str:
+        if t is os.PathLike:
+            return ""
+        return cast(FlyteFile, t).file_extension()
+
+    @staticmethod
+    def get_enable_legacy_filename(t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> str:
+        if t is os.PathLike:
+            return False
+        return cast(FlyteFile, t).enable_legacy_filename()
+
+    def _blob_type(self, format: str, file_extension: str = "", enable_legacy_filename: bool = False) -> BlobType:
+        return BlobType(format=format, dimensionality=BlobType.BlobDimensionality.SINGLE, file_extension=file_extension, enable_legacy_filename=enable_legacy_filename)
 
     def assert_type(
         self, t: typing.Union[typing.Type[FlyteFile], os.PathLike], v: typing.Union[FlyteFile, os.PathLike, str]
@@ -491,7 +514,11 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
         )
 
     def get_literal_type(self, t: typing.Union[typing.Type[FlyteFile], os.PathLike]) -> LiteralType:
-        return LiteralType(blob=self._blob_type(format=FlyteFilePathTransformer.get_format(t)))
+        return LiteralType(blob=self._blob_type(
+            format=FlyteFilePathTransformer.get_format(t),
+            file_extension=FlyteFilePathTransformer.get_file_extension(t),
+            enable_legacy_filename=FlyteFilePathTransformer.get_enable_legacy_filename(t),
+        ))
 
     def get_mime_type_from_extension(self, extension: str) -> typing.Union[str, typing.Sequence[str]]:
         extension_to_mime_type = {
@@ -565,7 +592,11 @@ class FlyteFilePathTransformer(AsyncTypeTransformer[FlyteFile]):
             raise ValueError(f"Incorrect type {python_type}, must be either a FlyteFile or os.PathLike")
 
         # information used by all cases
-        meta = BlobMetadata(type=self._blob_type(format=FlyteFilePathTransformer.get_format(python_type)))
+        meta = BlobMetadata(type=self._blob_type(
+            format=FlyteFilePathTransformer.get_format(python_type),
+            file_extension=FlyteFilePathTransformer.get_file_extension(python_type),
+            enable_legacy_filename=FlyteFilePathTransformer.get_enable_legacy_filename(python_type),
+        ))
 
         if isinstance(python_val, FlyteFile):
             # Cast the source path to str type to avoid error raised when the source path is used as the blob uri,
