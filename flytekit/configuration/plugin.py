@@ -19,6 +19,7 @@ my_plugin = "my_module:MyCustomPlugin"
 """
 
 import os
+import sys
 from typing import List, Optional, Protocol, Union, runtime_checkable
 
 from click import Group
